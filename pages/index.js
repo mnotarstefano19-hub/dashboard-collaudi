@@ -1,10 +1,10 @@
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const DATA_URL =
   "https://raw.githubusercontent.com/mnotarstefano19-hub/dashboard-collaudi/refs/heads/main/latest_C%26D%20Avanzamento%20Regioni_AI%20test_golive_v2.csv";
 
 function splitSemi(line) {
-  return line.split(";").map((c) => (c ?? "").trim());
+  return (line || "").split(";").map((c) => (c ?? "").trim());
 }
 
 function toNumber(x) {
@@ -17,163 +17,742 @@ function toNumber(x) {
 }
 
 function parseSectionTable(lines, headerPredicate, stopPredicate) {
-  const headerIdx = lines.findIndex((l) => headerPredicate((l ?? "").trim()));
+  const headerIdx = lines.findIndex((l) => headerPredicate((l || "").trim()));
   if (headerIdx === -1) return null;
 
   const header = splitSemi(lines[headerIdx]).filter((h) => h !== "");
   const rows = [];
 
   for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = (lines[i] ?? "").trim();
+    const line = (lines[i] || "").trim();
     if (!line) break;
     if (stopPredicate(line)) break;
 
-    const cellsRaw = splitSemi(line);
+    const cells = splitSemi(line);
     const obj = {};
-
     for (let c = 0; c < header.length; c++) {
-      obj[header[c]] = (cellsRaw[c] ?? "").trim();
+      obj[header[c]] = (cells[c] ?? "").trim();
     }
 
+    const nonEmpty = Object.values(obj).some((v) => String(v).trim() !== "");
+    if (!nonEmpty) continue;
     rows.push(obj);
   }
 
   return { header, rows };
 }
 
-function Card({ title, children }) {
+function Card({ title, children, style = {} }) {
   return (
-    <div style={{ border: "1px solid #ddd", padding: 16, marginBottom: 12 }}>
-      <h3>{title}</h3>
+    <div
+      style={{
+        border: "1px solid #E5E7EB",
+        borderRadius: 14,
+        padding: 16,
+        background: "white",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        ...style,
+      }}
+    >
+      {title ? (
+        <h3 style={{ margin: "0 0 12px 0", fontSize: 22, lineHeight: 1.2 }}>
+          {title}
+        </h3>
+      ) : null}
       {children}
     </div>
   );
 }
 
-export default function Dashboard() {
+function StatCard({ label, value, subtitle }) {
+  return (
+    <Card style={{ minWidth: 220 }}>
+      <div style={{ fontSize: 14, color: "#6B7280", marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>
+        {value}
+      </div>
+      {subtitle ? (
+        <div style={{ marginTop: 8, fontSize: 13, color: "#6B7280" }}>
+          {subtitle}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function Badge({ children, bg = "#EEF2FF", color = "#3730A3" }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "3px 8px",
+        borderRadius: 999,
+        background: bg,
+        color,
+        fontSize: 12,
+        fontWeight: 700,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ProgressBar({ value, max, color = "#2563EB" }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  return (
+    <div
+      style={{
+        height: 8,
+        background: "#E5E7EB",
+        borderRadius: 999,
+        overflow: "hidden",
+        marginTop: 6,
+      }}
+    >
+      <div style={{ width: `${pct}%`, height: "100%", background: color }} />
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        border: "1px solid #D1D5DB",
+        background: active ? "#111827" : "white",
+        color: active ? "white" : "#111827",
+        borderRadius: 10,
+        padding: "10px 14px",
+        fontWeight: 700,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyInfo({ text }) {
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 10,
+        background: "#ECFDF3",
+        border: "1px solid #D1FADF",
+        color: "#027A48",
+        fontWeight: 700,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+export default function DashboardCollaudi() {
   const [rawLines, setRawLines] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [tab, setTab] = useState("pipeline");
+  const [selectedState, setSelectedState] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
+  const [areaFilter, setAreaFilter] = useState("TUTTE");
 
   useEffect(() => {
     const load = async () => {
-      const res = await fetch(DATA_URL);
-      const text = await res.text();
-      const lines = text.split("\n");
-      setRawLines(lines);
+      try {
+        setLoading(true);
+        setErrorMsg("");
+        const res = await fetch(DATA_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        setRawLines(text.replace(/\r/g, "").split("\n"));
+      } catch (err) {
+        console.error(err);
+        setErrorMsg(
+          "Errore nel caricamento del CSV remoto. Verifica che il file esista su GitHub e che il link RAW sia corretto."
+        );
+      } finally {
+        setLoading(false);
+      }
     };
-
     load();
   }, []);
 
   const parsed = useMemo(() => {
     if (!rawLines.length) return null;
 
+    const pipeline = parseSectionTable(
+      rawLines,
+      (l) =>
+        l.startsWith("#;") &&
+        l.includes("STATO AVANZAMENTO") &&
+        l.includes("ITALIA"),
+      (l) => l.startsWith("📊") || l.startsWith("📍")
+    );
+
+    const matrix = parseSectionTable(
+      rawLines,
+      (l) =>
+        l.startsWith("STATO") &&
+        l.includes("FTTH") &&
+        l.includes("TOTALE"),
+      (l) => l.startsWith("📍")
+    );
+
     const regioni = parseSectionTable(
       rawLines,
-      (l) => l.startsWith("AREA;"),
-      () => false
+      (l) =>
+        l.startsWith("AREA;") &&
+        l.includes("REGIONE") &&
+        l.includes("TOTALE"),
+      (_) => false
     );
 
-    return { regioni };
+    return { pipeline, matrix, regioni };
   }, [rawLines]);
+  const pipelineRows = useMemo(() => {
+    if (!parsed?.pipeline?.rows) return [];
+    return parsed.pipeline.rows
+      .filter((r) => {
+        const s = (r["STATO AVANZAMENTO"] || "").trim();
+        return s && !/^TOTALE/i.test(s);
+      })
+      .map((r) => ({
+        stato: r["STATO AVANZAMENTO"],
+        totale: toNumber(r["ITALIA"]),
+        pct: toNumber(r["% TOT"]),
+        no: toNumber(r["NO"]),
+        ne: toNumber(r["NE"]),
+        ce: toNumber(r["CE"]),
+        sud: toNumber(r["SUD"]),
+      }));
+  }, [parsed]);
 
-  if (!parsed) return <div>Caricamento...</div>;
+  const matrixHeader = parsed?.matrix?.header || [];
+  const matrixRows = parsed?.matrix?.rows || [];
+  const matrixStateKey = matrixHeader[0] || "STATO \\ TIPOLOGIA";
 
-  const regioni = parsed.regioni.rows.map((r) => ({
-    regione: r["REGIONE"],
-    totale: toNumber(r["TOTALE"]),
-    row: r,
-  }));
+  const typologies = useMemo(() => {
+    if (!matrixHeader.length) return [];
+    return matrixHeader
+      .slice(1)
+      .filter((h) => h && h.toUpperCase() !== "TOTALE")
+      .map((h) => h.replace(/\\_/g, "_"));
+  }, [matrixHeader]);
 
-  const selected = regioni.find((r) => r.regione === selectedRegion);
+  const effectiveState = selectedState || pipelineRows[0]?.stato || null;
 
-  return (
-  <div style={{ padding: 20 }}>
-    <h1>📊 Dashboard Collaudi</h1>
-
-    {/* KPI */}
-    <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
-      <div><b>Totale residui:</b> {regioni.reduce((s, r) => s + r.totale, 0)}</div>
-      <div>
-
-      {/* Action Center */}
-    <div style={{ marginBottom: 20 }}>
-      <h3>🎯 Action Center</h3>
-
-      <div style={{ marginBottom: 6 }}>
-        ⚠️ Bottleneck principale:{" "}
-        <b>
-          {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.regione}
-        </b>
-      </div>
-
-      <div style={{ marginBottom: 6 }}>
-        🔥 Regione da attaccare subito →
-        <b>
-          {" "}
-          {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.regione}
-        </b>{" "}
-        con{" "}
-        <b>
-          {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.totale}
-        </b>{" "}
-        residui
-      </div>
-
-      {selected && (
-        <div style={{ marginBottom: 6 }}>
-          📍 Regione selezionata: <b>{selected.regione}</b> — driver:{" "}
-          <b>
-            {
-              Object.entries(selected.row)
-                .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
-                .sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0]
-            }
-          </b>
-        </div>
-      )}
-    </div>
-        <b>Regione più critica:</b>{" "}
-        {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.regione}
-      </div>
-      <div>
-        <b>Valore max regione:</b>{" "}
-        {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.totale}
-      </div>
-    </div>
-      <h1>Dashboard Collaudi</h1>
-
-      <Card title="Regioni">
-        {regioni.map((r) => (
-          <div
-            key={r.regione}
-            onClick={() => setSelectedRegion(r.regione)}
-            style={{ cursor: "pointer", marginBottom: 6 }}
-          >
-            {r.regione} — {r.totale}
-          </div>
-        ))}
-      </Card>
-
-      {selected && (
-        <Card title={`Dettaglio ${selected.regione}`}>
-        {Object.entries(selected.row)
-  .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
-  .map(([k, v]) => [k, Number(v)])
-  .sort((a, b) => b[1] - a[1])
-  .map(([k, v], idx) => {
-    const totale = selected.totale;
-    const perc = totale > 0 ? ((v / totale) * 100).toFixed(1) : 0;
+  const selectedStateRow = useMemo(() => {
+    if (!effectiveState || !matrixRows.length) return null;
 
     return (
-      <div key={k} style={{ marginBottom: 6 }}>
-        <b>{k}</b>: {v} ({perc}%)
-        {idx === 0 && " 🔥"}
+      matrixRows.find(
+        (r) =>
+          ((r[matrixStateKey] || "").trim() === effectiveState) ||
+          ((r[matrixStateKey] || "").trim().toLowerCase() ===
+            effectiveState.toLowerCase())
+      ) || null
+    );
+  }, [effectiveState, matrixRows, matrixStateKey]);
+
+  const selectedStateValues = useMemo(() => {
+    if (!selectedStateRow) return [];
+    return typologies
+      .map((t) => ({
+        tipologia: t,
+        value: toNumber(
+          selectedStateRow[t] ?? selectedStateRow[t.replace(/_/g, "\\_")]
+        ),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [selectedStateRow, typologies]);
+
+  const stateDriver = selectedStateValues[0] || { tipologia: "-", value: 0 };
+
+  const regionRows = useMemo(() => {
+    if (!parsed?.regioni?.rows) return [];
+    return parsed.regioni.rows
+      .map((r) => ({
+        area: (r["AREA"] || "").trim(),
+        regione: (r["REGIONE"] || "").trim(),
+        totale: toNumber(r["TOTALE"]),
+        row: r,
+      }))
+      .filter((r) => r.area && r.regione && !/^TOTALE/i.test(r.regione));
+  }, [parsed]);
+
+  const areas = useMemo(() => {
+    return ["TUTTE", ...Array.from(new Set(regionRows.map((r) => r.area)))];
+  }, [regionRows]);
+
+  const filteredRegions = useMemo(() => {
+    return regionRows
+      .filter((r) => areaFilter === "TUTTE" || r.area === areaFilter)
+      .sort((a, b) => b.totale - a.totale);
+  }, [regionRows, areaFilter]);
+
+  const selected =
+    filteredRegions.find((r) => r.regione === selectedRegion) || null;
+
+  const totalResidui = pipelineRows.reduce((s, r) => s + r.totale, 0);
+  const mostCriticalRegion =
+    filteredRegions[0] ||
+    regionRows.slice().sort((a, b) => b.totale - a.totale)[0] ||
+    null;
+  const mostCriticalState =
+    pipelineRows.slice().sort((a, b) => b.totale - a.totale)[0] || null;
+
+  const selectedRegionValues = useMemo(() => {
+    if (!selected) return [];
+    return Object.entries(selected.row)
+      .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
+      .map(([k, v]) => ({
+        tipologia: k.replace(/\\_/g, "_"),
+        value: Number(v) || 0,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [selected]);
+
+  const selectedRegionDriver =
+    selectedRegionValues[0] || { tipologia: "-", value: 0 };
+
+  const actionCenter = useMemo(() => {
+    const actions = [];
+    if (mostCriticalState) {
+      actions.push({
+        icon: "⚠️",
+        title: "Bottleneck principale",
+        text: `${mostCriticalState.stato} con ${mostCriticalState.totale} residui (${mostCriticalState.pct.toFixed(
+          1
+        )}%)`,
+      });
+    }
+    if (mostCriticalRegion) {
+      actions.push({
+        icon: "🔥",
+        title: "Regione da attaccare subito",
+        text: `${mostCriticalRegion.regione} con ${mostCriticalRegion.totale} residui`,
+      });
+    }
+    if (selected) {
+      actions.push({
+        icon: "📍",
+        title: "Regione selezionata",
+        text:
+          selected.totale === 0
+            ? `${selected.regione}: nessun residuo attuale`
+            : `${selected.regione}: driver ${selectedRegionDriver.tipologia} (${selectedRegionDriver.value})`,
+      });
+    }
+    if (selectedStateRow) {
+      actions.push({
+        icon: "🧭",
+        title: "Fase selezionata",
+        text:
+          stateDriver.value === 0
+            ? `${effectiveState}: nessun elemento residuo`
+            : `${effectiveState}: driver ${stateDriver.tipologia} (${stateDriver.value})`,
+      });
+    }
+    return actions;
+  }, [
+    mostCriticalState,
+    mostCriticalRegion,
+    selected,
+    selectedRegionDriver,
+    selectedStateRow,
+    stateDriver,
+    effectiveState,
+  ]);
+
+  if (loading) {
+    return <div style={{ padding: 20 }}>Caricamento dati...</div>;
+  }
+
+  if (errorMsg) {
+    return (
+      <div style={{ padding: 20, color: "crimson", fontWeight: 700 }}>
+        {errorMsg}
       </div>
     );
-  })}
+  }
+
+  if (!parsed) {
+    return <div style={{ padding: 20 }}>Nessun dato disponibile.</div>;
+  }
+
+  return (
+    <div
+      style={{
+        padding: 20,
+        fontFamily: "Arial, sans-serif",
+        background: "#F8FAFC",
+        minHeight: "100vh",
+      }}
+    >
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 20,
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h1 style={{ margin: 0, fontSize: 42 }}>📊 Dashboard Collaudi</h1>
+            <div style={{ marginTop: 6, color: "#6B7280" }}>
+              Monitoraggio e controllo — aggiornamento automatico dal CSV remoto
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                border: "1px solid #D1D5DB",
+                background: "white",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🔄 Ricarica dati
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 16,
+            marginBottom: 20,
+          }}
+        >
+          <StatCard
+            label="Totale residui"
+            value={totalResidui}
+            subtitle="Somma dei residui per stato"
+          />
+          <StatCard
+            label="Stato più critico"
+            value={mostCriticalState?.stato || "-"}
+            subtitle={mostCriticalState ? `${mostCriticalState.totale} residui` : ""}
+          />
+          <StatCard
+            label="Regione più critica"
+            value={mostCriticalRegion?.regione || "-"}
+            subtitle={mostCriticalRegion ? `${mostCriticalRegion.totale} residui` : ""}
+          />
+          <StatCard
+            label="Valore max regione"
+            value={mostCriticalRegion?.totale || 0}
+            subtitle={mostCriticalRegion?.area || ""}
+          />
+        </div>
+
+        <Card title="🎯 Action Center" style={{ marginBottom: 20 }}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {actionCenter.map((a, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "#fff",
+                  border: "1px solid #E5E7EB",
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                  {a.icon} {a.title}
+                </div>
+                <div>{a.text}</div>
+              </div>
+            ))}
+          </div>
         </Card>
-      )}
+
+        <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+          <TabButton active={tab === "pipeline"} onClick={() => setTab("pipeline")}>
+            Pipeline Stati
+          </TabButton>
+          <TabButton active={tab === "regioni"} onClick={() => setTab("regioni")}>
+            Regioni
+          </TabButton>
+        </div>
+{tab === "pipeline" && (
+          <Card title="Pipeline Stati">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 12,
+              }}
+            >
+              {pipelineRows.map((r) => {
+                const active = effectiveState === r.stato;
+                return (
+                  <div
+                    key={r.stato}
+                    onClick={() => setSelectedState(r.stato)}
+                    style={{
+                      border: active ? "2px solid #111827" : "1px solid #E5E7EB",
+                      borderRadius: 12,
+                      padding: 14,
+                      background: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>{r.stato}</div>
+                      <Badge>{r.totale}</Badge>
+                    </div>
+                    <div style={{ marginTop: 8, color: "#6B7280", fontSize: 13 }}>
+                      {r.pct.toFixed(1)}% del totale • NO {r.no} • NE {r.ne} • CE {r.ce} • SUD {r.sud}
+                    </div>
+                    <ProgressBar
+                      value={r.totale}
+                      max={totalResidui}
+                      color={active ? "#111827" : "#2563EB"}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <Card title={`Dettaglio stato: ${effectiveState}`}>
+                {selectedStateValues.length === 0 ||
+                selectedStateValues.every((x) => x.value === 0) ? (
+                  <EmptyInfo text={`Nessun residuo nello stato “${effectiveState}” al momento.`} />
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    {selectedStateValues.map((x, idx) => {
+                      const pct =
+                        selectedStateRow && toNumber(selectedStateRow["TOTALE"]) > 0
+                          ? ((x.value / toNumber(selectedStateRow["TOTALE"])) * 100).toFixed(1)
+                          : "0.0";
+
+                      return (
+                        <div
+                          key={x.tipologia}
+                          style={{
+                            border: "1px solid #E5E7EB",
+                            borderRadius: 12,
+                            padding: 12,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ fontWeight: 800 }}>{x.tipologia}</div>
+                            <div>{idx === 0 ? "🔥" : ""}</div>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>
+                            {x.value}
+                          </div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>
+                            {pct}% dello stato
+                          </div>
+                          <ProgressBar
+                            value={x.value}
+                            max={toNumber(selectedStateRow["TOTALE"])}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+            </div>
+          </Card>
+        )}
+
+        {tab === "regioni" && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: selected ? "1.1fr 1fr" : "1fr",
+              gap: 16,
+            }}
+          >
+            <Card title="Regioni" style={{ minHeight: 420 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 12,
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ color: "#6B7280" }}>
+                  Clicca una regione per vedere il dettaglio tipologie
+                </div>
+                <div>
+                  <label style={{ marginRight: 8, fontWeight: 700 }}>Area:</label>
+                  <select
+                    value={areaFilter}
+                    onChange={(e) => {
+                      setAreaFilter(e.target.value);
+                      setSelectedRegion(null);
+                    }}
+                    style={{ padding: 8, borderRadius: 8 }}
+                  >
+                    {areas.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {filteredRegions.map((r, idx) => (
+                  <div
+                    key={r.regione}
+                    onClick={() => setSelectedRegion(r.regione)}
+                    style={{
+                      cursor: "pointer",
+                      padding: 12,
+                      borderRadius: 12,
+                      border:
+                        selectedRegion === r.regione
+                          ? "2px solid #111827"
+                          : "1px solid #E5E7EB",
+                      background: "white",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <Badge
+                          bg={idx === 0 ? "#FEF2F2" : "#EEF2FF"}
+                          color={idx === 0 ? "#B91C1C" : "#3730A3"}
+                        >
+                          {idx + 1}
+                        </Badge>
+                        <div>
+                          <div style={{ fontWeight: 800 }}>{r.regione}</div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>{r.area}</div>
+                        </div>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 20 }}>{r.totale}</div>
+                    </div>
+                    <ProgressBar
+                      value={r.totale}
+                      max={filteredRegions[0]?.totale || 1}
+                      color={idx === 0 ? "#DC2626" : "#2563EB"}
+                    />
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {selected && (
+              <Card title={`Dettaglio ${selected.regione}`}>
+                <div
+                  style={{
+                    marginBottom: 10,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <b>Area:</b> {selected.area}
+                  </div>
+                  <div>
+                    <b>Totale residui:</b> {selected.totale}
+                  </div>
+                </div>
+
+                {selectedRegionValues.length === 0 ||
+                selectedRegionValues.every((x) => x.value === 0) ? (
+                  <EmptyInfo text={`Nessun residuo disponibile per ${selected.regione}.`} />
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {selectedRegionValues.map((x, idx) => {
+                      const pct =
+                        selected.totale > 0
+                          ? ((x.value / selected.totale) * 100).toFixed(1)
+                          : "0.0";
+
+                      return (
+                        <div
+                          key={x.tipologia}
+                          style={{
+                            border: "1px solid #E5E7EB",
+                            borderRadius: 12,
+                            padding: 12,
+                            background: "#fff",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ fontWeight: 800 }}>
+                              {x.tipologia} {idx === 0 ? "🔥" : ""}
+                            </div>
+                            <div style={{ fontWeight: 800 }}>{x.value}</div>
+                          </div>
+                          <div style={{ marginTop: 4, color: "#6B7280", fontSize: 13 }}>
+                            {pct}% del totale regione
+                          </div>
+                          <ProgressBar
+                            value={x.value}
+                            max={selected.totale}
+                            color={idx === 0 ? "#DC2626" : "#2563EB"}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
