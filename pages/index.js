@@ -11,7 +11,7 @@ function toNumber(x) {
   if (x === null || x === undefined) return 0;
   const s = String(x).trim();
   if (!s) return 0;
-  const normalized = s.replace(/\./g, "").replace(/,/g, ".");
+  const normalized = s.replace(/\./g, "").replace(/,/g, ".").replace(/%/g, "");
   const n = Number(normalized);
   return Number.isFinite(n) ? n : 0;
 }
@@ -34,31 +34,42 @@ function parseSectionTable(lines, headerPredicate, stopPredicate) {
       obj[header[c]] = (cells[c] ?? "").trim();
     }
 
-    const nonEmpty = Object.values(obj).some((v) => String(v).trim() !== "");
-    if (!nonEmpty) continue;
+    const hasAnyValue = Object.values(obj).some((v) => String(v).trim() !== "");
+    if (!hasAnyValue) continue;
+
     rows.push(obj);
   }
 
   return { header, rows };
 }
 
-function Card({ title, children, style = {} }) {
+function Card({ title, right, children, style = {} }) {
   return (
     <div
       style={{
         border: "1px solid #E5E7EB",
-        borderRadius: 14,
+        borderRadius: 16,
         padding: 16,
         background: "white",
         boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
         ...style,
       }}
     >
-      {title ? (
-        <h3 style={{ margin: "0 0 12px 0", fontSize: 22, lineHeight: 1.2 }}>
-          {title}
-        </h3>
-      ) : null}
+      {(title || right) && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 22, lineHeight: 1.2 }}>{title}</h3>
+          {right || null}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -67,16 +78,10 @@ function Card({ title, children, style = {} }) {
 function StatCard({ label, value, subtitle }) {
   return (
     <Card style={{ minWidth: 220 }}>
-      <div style={{ fontSize: 14, color: "#6B7280", marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>
-        {value}
-      </div>
+      <div style={{ fontSize: 14, color: "#6B7280", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{value}</div>
       {subtitle ? (
-        <div style={{ marginTop: 8, fontSize: 13, color: "#6B7280" }}>
-          {subtitle}
-        </div>
+        <div style={{ marginTop: 8, fontSize: 13, color: "#6B7280" }}>{subtitle}</div>
       ) : null}
     </Card>
   );
@@ -103,15 +108,7 @@ function Badge({ children, bg = "#EEF2FF", color = "#3730A3" }) {
 function ProgressBar({ value, max, color = "#2563EB" }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
-    <div
-      style={{
-        height: 8,
-        background: "#E5E7EB",
-        borderRadius: 999,
-        overflow: "hidden",
-        marginTop: 6,
-      }}
-    >
+    <div style={{ height: 8, background: "#E5E7EB", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
       <div style={{ width: `${pct}%`, height: "100%", background: color }} />
     </div>
   );
@@ -153,6 +150,15 @@ function EmptyInfo({ text }) {
   );
 }
 
+function InfoRow({ label, value }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14 }}>
+      <div style={{ color: "#6B7280" }}>{label}</div>
+      <div style={{ fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+}
+
 export default function DashboardCollaudi() {
   const [rawLines, setRawLines] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -188,33 +194,25 @@ export default function DashboardCollaudi() {
 
     const pipeline = parseSectionTable(
       rawLines,
-      (l) =>
-        l.startsWith("#;") &&
-        l.includes("STATO AVANZAMENTO") &&
-        l.includes("ITALIA"),
+      (l) => l.startsWith("#;") && l.includes("STATO AVANZAMENTO") && l.includes("ITALIA"),
       (l) => l.startsWith("📊") || l.startsWith("📍")
     );
 
     const matrix = parseSectionTable(
       rawLines,
-      (l) =>
-        l.startsWith("STATO") &&
-        l.includes("FTTH") &&
-        l.includes("TOTALE"),
+      (l) => l.startsWith("STATO") && l.includes("FTTH") && l.includes("TOTALE"),
       (l) => l.startsWith("📍")
     );
 
     const regioni = parseSectionTable(
       rawLines,
-      (l) =>
-        l.startsWith("AREA;") &&
-        l.includes("REGIONE") &&
-        l.includes("TOTALE"),
+      (l) => l.startsWith("AREA;") && l.includes("REGIONE") && l.includes("TOTALE"),
       (_) => false
     );
 
     return { pipeline, matrix, regioni };
   }, [rawLines]);
+
   const pipelineRows = useMemo(() => {
     if (!parsed?.pipeline?.rows) return [];
     return parsed.pipeline.rows
@@ -225,7 +223,7 @@ export default function DashboardCollaudi() {
       .map((r) => ({
         stato: r["STATO AVANZAMENTO"],
         totale: toNumber(r["ITALIA"]),
-        pct: toNumber((r["% TOT"] || "").replace("%", "")),
+        pct: toNumber(r["% TOT"]),
         no: toNumber(r["NO"]),
         ne: toNumber(r["NE"]),
         ce: toNumber(r["CE"]),
@@ -249,13 +247,11 @@ export default function DashboardCollaudi() {
 
   const selectedStateRow = useMemo(() => {
     if (!effectiveState || !matrixRows.length) return null;
-
     return (
       matrixRows.find(
         (r) =>
           ((r[matrixStateKey] || "").trim() === effectiveState) ||
-          ((r[matrixStateKey] || "").trim().toLowerCase() ===
-            effectiveState.toLowerCase())
+          ((r[matrixStateKey] || "").trim().toLowerCase() === effectiveState.toLowerCase())
       ) || null
     );
   }, [effectiveState, matrixRows, matrixStateKey]);
@@ -265,9 +261,7 @@ export default function DashboardCollaudi() {
     return typologies
       .map((t) => ({
         tipologia: t,
-        value: toNumber(
-          selectedStateRow[t] ?? selectedStateRow[t.replace(/_/g, "\\_")]
-        ),
+        value: toNumber(selectedStateRow[t] ?? selectedStateRow[t.replace(/_/g, "\\_")]),
       }))
       .sort((a, b) => b.value - a.value);
   }, [selectedStateRow, typologies]);
@@ -296,14 +290,11 @@ export default function DashboardCollaudi() {
       .sort((a, b) => b.totale - a.totale);
   }, [regionRows, areaFilter]);
 
-  const selected =
-    filteredRegions.find((r) => r.regione === selectedRegion) || null;
+  const selected = filteredRegions.find((r) => r.regione === selectedRegion) || null;
 
   const totalResidui = pipelineRows.reduce((s, r) => s + r.totale, 0);
   const mostCriticalRegion =
-    filteredRegions[0] ||
-    regionRows.slice().sort((a, b) => b.totale - a.totale)[0] ||
-    null;
+    filteredRegions[0] || regionRows.slice().sort((a, b) => b.totale - a.totale)[0] || null;
   const mostCriticalState =
     pipelineRows.slice().sort((a, b) => b.totale - a.totale)[0] || null;
 
@@ -311,15 +302,24 @@ export default function DashboardCollaudi() {
     if (!selected) return [];
     return Object.entries(selected.row)
       .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
-      .map(([k, v]) => ({
-        tipologia: k.replace(/\\_/g, "_"),
-        value: Number(v) || 0,
-      }))
+      .map(([k, v]) => ({ tipologia: k.replace(/\\_/g, "_"), value: Number(v) || 0 }))
       .sort((a, b) => b.value - a.value);
   }, [selected]);
 
-  const selectedRegionDriver =
-    selectedRegionValues[0] || { tipologia: "-", value: 0 };
+  const selectedRegionDriver = selectedRegionValues[0] || { tipologia: "-", value: 0 };
+
+  const dominantAreaInState = useMemo(() => {
+    if (!pipelineRows.length || !effectiveState) return { area: "-", value: 0 };
+    const row = pipelineRows.find((r) => r.stato === effectiveState);
+    if (!row) return { area: "-", value: 0 };
+    const entries = [
+      ["Nord Ovest", row.no],
+      ["Nord Est", row.ne],
+      ["Centro", row.ce],
+      ["Sud", row.sud],
+    ].sort((a, b) => b[1] - a[1]);
+    return { area: entries[0][0], value: entries[0][1] };
+  }, [pipelineRows, effectiveState]);
 
   const actionCenter = useMemo(() => {
     const actions = [];
@@ -327,9 +327,7 @@ export default function DashboardCollaudi() {
       actions.push({
         icon: "⚠️",
         title: "Bottleneck principale",
-        text: `${mostCriticalState.stato} con ${mostCriticalState.totale} residui (${mostCriticalState.pct.toFixed(
-          1
-        )}%)`,
+        text: `${mostCriticalState.stato} con ${mostCriticalState.totale} residui (${mostCriticalState.pct.toFixed(1)}%)`,
       });
     }
     if (mostCriticalRegion) {
@@ -358,17 +356,14 @@ export default function DashboardCollaudi() {
             ? `${effectiveState}: nessun elemento residuo`
             : `${effectiveState}: driver ${stateDriver.tipologia} (${stateDriver.value})`,
       });
+      actions.push({
+        icon: "🗺️",
+        title: "Area prevalente nello stato",
+        text: `${effectiveState}: concentrazione maggiore in ${dominantAreaInState.area} (${dominantAreaInState.value})`,
+      });
     }
     return actions;
-  }, [
-    mostCriticalState,
-    mostCriticalRegion,
-    selected,
-    selectedRegionDriver,
-    selectedStateRow,
-    stateDriver,
-    effectiveState,
-  ]);
+  }, [mostCriticalState, mostCriticalRegion, selected, selectedRegionDriver, selectedStateRow, stateDriver, effectiveState, dominantAreaInState]);
 
   if (loading) {
     return <div style={{ padding: 20 }}>Caricamento dati...</div>;
@@ -387,25 +382,9 @@ export default function DashboardCollaudi() {
   }
 
   return (
-    <div
-      style={{
-        padding: 20,
-        fontFamily: "Arial, sans-serif",
-        background: "#F8FAFC",
-        minHeight: "100vh",
-      }}
-    >
+    <div style={{ padding: 20, fontFamily: "Arial, sans-serif", background: "#F8FAFC", minHeight: "100vh" }}>
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 20,
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 42 }}>📊 Dashboard Collaudi</h1>
             <div style={{ marginTop: 6, color: "#6B7280" }}>
@@ -429,19 +408,8 @@ export default function DashboardCollaudi() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 20,
-          }}
-        >
-          <StatCard
-            label="Totale residui"
-            value={totalResidui}
-            subtitle="Somma dei residui per stato"
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
+          <StatCard label="Totale residui" value={totalResidui} subtitle="Somma dei residui per stato" />
           <StatCard
             label="Stato più critico"
             value={mostCriticalState?.stato || "-"}
@@ -488,15 +456,10 @@ export default function DashboardCollaudi() {
             Regioni
           </TabButton>
         </div>
-{tab === "pipeline" && (
+
+        {tab === "pipeline" && (
           <Card title="Pipeline Stati">
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: 12,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               {pipelineRows.map((r) => {
                 const active = effectiveState === r.stato;
                 return (
@@ -511,43 +474,25 @@ export default function DashboardCollaudi() {
                       cursor: "pointer",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 10,
-                      }}
-                    >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <div style={{ fontWeight: 800 }}>{r.stato}</div>
                       <Badge>{r.totale}</Badge>
                     </div>
                     <div style={{ marginTop: 8, color: "#6B7280", fontSize: 13 }}>
                       {r.pct.toFixed(1)}% del totale • NO {r.no} • NE {r.ne} • CE {r.ce} • SUD {r.sud}
                     </div>
-                    <ProgressBar
-                      value={r.totale}
-                      max={totalResidui}
-                      color={active ? "#111827" : "#2563EB"}
-                    />
+                    <ProgressBar value={r.totale} max={totalResidui} color={active ? "#111827" : "#2563EB"} />
                   </div>
                 );
               })}
             </div>
 
-            <div style={{ marginTop: 20 }}>
+            <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16 }}>
               <Card title={`Dettaglio stato: ${effectiveState}`}>
-                {selectedStateValues.length === 0 ||
-                selectedStateValues.every((x) => x.value === 0) ? (
+                {selectedStateValues.length === 0 || selectedStateValues.every((x) => x.value === 0) ? (
                   <EmptyInfo text={`Nessun residuo nello stato “${effectiveState}” al momento.`} />
                 ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                     {selectedStateValues.map((x, idx) => {
                       const pct =
                         selectedStateRow && toNumber(selectedStateRow["TOTALE"]) > 0
@@ -555,66 +500,60 @@ export default function DashboardCollaudi() {
                           : "0.0";
 
                       return (
-                        <div
-                          key={x.tipologia}
-                          style={{
-                            border: "1px solid #E5E7EB",
-                            borderRadius: 12,
-                            padding: 12,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
+                        <div key={x.tipologia} style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <div style={{ fontWeight: 800 }}>{x.tipologia}</div>
                             <div>{idx === 0 ? "🔥" : ""}</div>
                           </div>
-                          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>
-                            {x.value}
-                          </div>
-                          <div style={{ fontSize: 13, color: "#6B7280" }}>
-                            {pct}% dello stato
-                          </div>
-                          <ProgressBar
-                            value={x.value}
-                            max={toNumber(selectedStateRow["TOTALE"])}
-                          />
+                          <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{x.value}</div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>{pct}% dello stato</div>
+                          <ProgressBar value={x.value} max={toNumber(selectedStateRow["TOTALE"])} />
                         </div>
                       );
                     })}
                   </div>
                 )}
               </Card>
+
+              <Card title="Dove pesa di più questo stato?">
+                {(() => {
+                  const row = pipelineRows.find((r) => r.stato === effectiveState);
+                  if (!row) return <EmptyInfo text="Nessun dato area disponibile." />;
+                  const areaBreakdown = [
+                    { area: "Nord Ovest", value: row.no },
+                    { area: "Nord Est", value: row.ne },
+                    { area: "Centro", value: row.ce },
+                    { area: "Sud", value: row.sud },
+                  ].sort((a, b) => b.value - a.value);
+                  return (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {areaBreakdown.map((x, idx) => (
+                        <div key={x.area} style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: 12, background: "#fff" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ fontWeight: 800 }}>
+                              {x.area} {idx === 0 ? "🔥" : ""}
+                            </div>
+                            <div style={{ fontWeight: 800 }}>{x.value}</div>
+                          </div>
+                          <div style={{ color: "#6B7280", fontSize: 13 }}>
+                            {row.totale > 0 ? ((x.value / row.totale) * 100).toFixed(1) : "0.0"}% dello stato
+                          </div>
+                          <ProgressBar value={x.value} max={row.totale} color={idx === 0 ? "#DC2626" : "#2563EB"} />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </Card>
             </div>
           </Card>
         )}
 
         {tab === "regioni" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: selected ? "1.1fr 1fr" : "1fr",
-              gap: 16,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: selected ? "1.1fr 1fr" : "1fr", gap: 16 }}>
             <Card title="Regioni" style={{ minHeight: 420 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
-                  gap: 12,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ color: "#6B7280" }}>
-                  Clicca una regione per vedere il dettaglio tipologie
-                </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "#6B7280" }}>Clicca una regione per vedere il dettaglio tipologie</div>
                 <div>
                   <label style={{ marginRight: 8, fontWeight: 700 }}>Area:</label>
                   <select
@@ -643,26 +582,13 @@ export default function DashboardCollaudi() {
                       cursor: "pointer",
                       padding: 12,
                       borderRadius: 12,
-                      border:
-                        selectedRegion === r.regione
-                          ? "2px solid #111827"
-                          : "1px solid #E5E7EB",
+                      border: selectedRegion === r.regione ? "2px solid #111827" : "1px solid #E5E7EB",
                       background: "white",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        alignItems: "center",
-                      }}
-                    >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <Badge
-                          bg={idx === 0 ? "#FEF2F2" : "#EEF2FF"}
-                          color={idx === 0 ? "#B91C1C" : "#3730A3"}
-                        >
+                        <Badge bg={idx === 0 ? "#FEF2F2" : "#EEF2FF"} color={idx === 0 ? "#B91C1C" : "#3730A3"}>
                           {idx + 1}
                         </Badge>
                         <div>
@@ -672,11 +598,7 @@ export default function DashboardCollaudi() {
                       </div>
                       <div style={{ fontWeight: 800, fontSize: 20 }}>{r.totale}</div>
                     </div>
-                    <ProgressBar
-                      value={r.totale}
-                      max={filteredRegions[0]?.totale || 1}
-                      color={idx === 0 ? "#DC2626" : "#2563EB"}
-                    />
+                    <ProgressBar value={r.totale} max={filteredRegions[0]?.totale || 1} color={idx === 0 ? "#DC2626" : "#2563EB"} />
                   </div>
                 ))}
               </div>
@@ -684,34 +606,17 @@ export default function DashboardCollaudi() {
 
             {selected && (
               <Card title={`Dettaglio ${selected.regione}`}>
-                <div
-                  style={{
-                    marginBottom: 10,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <b>Area:</b> {selected.area}
-                  </div>
-                  <div>
-                    <b>Totale residui:</b> {selected.totale}
-                  </div>
+                <div style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <InfoRow label="Area" value={selected.area} />
+                  <InfoRow label="Totale residui" value={selected.totale} />
                 </div>
 
-                {selectedRegionValues.length === 0 ||
-                selectedRegionValues.every((x) => x.value === 0) ? (
+                {selectedRegionValues.length === 0 || selectedRegionValues.every((x) => x.value === 0) ? (
                   <EmptyInfo text={`Nessun residuo disponibile per ${selected.regione}.`} />
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>
                     {selectedRegionValues.map((x, idx) => {
-                      const pct =
-                        selected.totale > 0
-                          ? ((x.value / selected.totale) * 100).toFixed(1)
-                          : "0.0";
-
+                      const pct = selected.totale > 0 ? ((x.value / selected.totale) * 100).toFixed(1) : "0.0";
                       return (
                         <div
                           key={x.tipologia}
@@ -722,14 +627,7 @@ export default function DashboardCollaudi() {
                             background: "#fff",
                           }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 10,
-                            }}
-                          >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                             <div style={{ fontWeight: 800 }}>
                               {x.tipologia} {idx === 0 ? "🔥" : ""}
                             </div>
@@ -738,11 +636,7 @@ export default function DashboardCollaudi() {
                           <div style={{ marginTop: 4, color: "#6B7280", fontSize: 13 }}>
                             {pct}% del totale regione
                           </div>
-                          <ProgressBar
-                            value={x.value}
-                            max={selected.totale}
-                            color={idx === 0 ? "#DC2626" : "#2563EB"}
-                          />
+                          <ProgressBar value={x.value} max={selected.totale} color={idx === 0 ? "#DC2626" : "#2563EB"} />
                         </div>
                       );
                     })}
