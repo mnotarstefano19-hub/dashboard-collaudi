@@ -157,13 +157,21 @@ export default function Dashboard() {
 
       {selected && (
         <Card title={`Dettaglio ${selected.regione}`}>
-          {Object.entries(selected.row)
-            .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
-            .map(([k, v]) => (
-              <div key={k}>
-                {k}: {v}
-              </div>
-            ))}
+        {Object.entries(selected.row)
+  .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
+  .map(([k, v]) => [k, Number(v)])
+  .sort((a, b) => b[1] - a[1])
+  .map(([k, v], idx) => {
+    const totale = selected.totale;
+    const perc = totale > 0 ? ((v / totale) * 100).toFixed(1) : 0;
+
+    return (
+      <div key={k} style={{ marginBottom: 6 }}>
+        <b>{k}</b>: {v} ({perc}%)
+        {idx === 0 && " 🔥"}
+      </div>
+    );
+  })}
         </Card>
       )}
     </div>
