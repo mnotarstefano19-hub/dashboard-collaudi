@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 const DATA_URL =
   "https://raw.githubusercontent.com/mnotarstefano19-hub/dashboard-collaudi/refs/heads/main/latest_C%26D%20Avanzamento%20Regioni_AI%20test_golive_v2.csv";
 
+const SCOPE_OPTIONS = ["ITALIA", "NORD OVEST", "NORD EST", "CENTRO", "SUD"];
+
 function splitSemi(line) {
   return (line || "").split(";").map((c) => (c ?? "").trim());
 }
@@ -36,7 +38,6 @@ function parseSectionTable(lines, headerPredicate, stopPredicate) {
 
     const hasAnyValue = Object.values(obj).some((v) => String(v).trim() !== "");
     if (!hasAnyValue) continue;
-
     rows.push(obj);
   }
 
@@ -133,6 +134,26 @@ function TabButton({ active, onClick, children }) {
   );
 }
 
+function ScopeButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        border: active ? "2px solid #111827" : "1px solid #D1D5DB",
+        background: active ? "#111827" : "white",
+        color: active ? "white" : "#111827",
+        borderRadius: 999,
+        padding: "8px 14px",
+        fontWeight: 800,
+        cursor: "pointer",
+        fontSize: 13,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function EmptyInfo({ text }) {
   return (
     <div
@@ -164,6 +185,7 @@ export default function DashboardCollaudi() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [tab, setTab] = useState("pipeline");
+  const [scope, setScope] = useState("ITALIA");
   const [selectedState, setSelectedState] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [areaFilter, setAreaFilter] = useState("TUTTE");
@@ -188,6 +210,10 @@ export default function DashboardCollaudi() {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    setSelectedRegion(null);
+  }, [areaFilter]);
 
   const parsed = useMemo(() => {
     if (!rawLines.length) return null;
@@ -243,31 +269,6 @@ export default function DashboardCollaudi() {
       .map((h) => h.replace(/\\_/g, "_"));
   }, [matrixHeader]);
 
-  const effectiveState = selectedState || pipelineRows[0]?.stato || null;
-
-  const selectedStateRow = useMemo(() => {
-    if (!effectiveState || !matrixRows.length) return null;
-    return (
-      matrixRows.find(
-        (r) =>
-          ((r[matrixStateKey] || "").trim() === effectiveState) ||
-          ((r[matrixStateKey] || "").trim().toLowerCase() === effectiveState.toLowerCase())
-      ) || null
-    );
-  }, [effectiveState, matrixRows, matrixStateKey]);
-
-  const selectedStateValues = useMemo(() => {
-    if (!selectedStateRow) return [];
-    return typologies
-      .map((t) => ({
-        tipologia: t,
-        value: toNumber(selectedStateRow[t] ?? selectedStateRow[t.replace(/_/g, "\\_")]),
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [selectedStateRow, typologies]);
-
-  const stateDriver = selectedStateValues[0] || { tipologia: "-", value: 0 };
-
   const regionRows = useMemo(() => {
     if (!parsed?.regioni?.rows) return [];
     return parsed.regioni.rows
@@ -292,11 +293,91 @@ export default function DashboardCollaudi() {
 
   const selected = filteredRegions.find((r) => r.regione === selectedRegion) || null;
 
-  const totalResidui = pipelineRows.reduce((s, r) => s + r.totale, 0);
-  const mostCriticalRegion =
-    filteredRegions[0] || regionRows.slice().sort((a, b) => b.totale - a.totale)[0] || null;
-  const mostCriticalState =
-    pipelineRows.slice().sort((a, b) => b.totale - a.totale)[0] || null;
+  const scopeStateRows = useMemo(() => {
+    return pipelineRows
+      .map((r) => {
+        const scopedValue =
+          scope === "ITALIA"
+            ? r.totale
+            : scope === "NORD OVEST"
+            ? r.no
+            : scope === "NORD EST"
+            ? r.ne
+            : scope === "CENTRO"
+            ? r.ce
+            : r.sud;
+
+        return {
+          ...r,
+          scopedValue,
+        };
+      })
+      .sort((a, b) => b.scopedValue - a.scopedValue);
+  }, [pipelineRows, scope]);
+
+  const scopeRegionRows = useMemo(() => {
+    return (scope === "ITALIA" ? regionRows : regionRows.filter((r) => r.area === scope)).sort(
+      (a, b) => b.totale - a.totale
+    );
+  }, [regionRows, scope]);
+
+  const scopeTotalResidui = useMemo(() => {
+    return scope === "ITALIA"
+      ? pipelineRows.reduce((s, r) => s + r.totale, 0)
+      : scopeRegionRows.reduce((s, r) => s + r.totale, 0);
+  }, [scope, pipelineRows, scopeRegionRows]);
+
+  const mostCriticalState = scopeStateRows[0] || null;
+  const mostCriticalRegion = scopeRegionRows[0] || null;
+
+  const mostCriticalArea = useMemo(() => {
+    const areaTotals = [
+      {
+        area: "NORD OVEST",
+        value: regionRows.filter((r) => r.area === "NORD OVEST").reduce((s, r) => s + r.totale, 0),
+      },
+      {
+        area: "NORD EST",
+        value: regionRows.filter((r) => r.area === "NORD EST").reduce((s, r) => s + r.totale, 0),
+      },
+      {
+        area: "CENTRO",
+        value: regionRows.filter((r) => r.area === "CENTRO").reduce((s, r) => s + r.totale, 0),
+      },
+      {
+        area: "SUD",
+        value: regionRows.filter((r) => r.area === "SUD").reduce((s, r) => s + r.totale, 0),
+      },
+    ].sort((a, b) => b.value - a.value);
+
+    if (scope === "ITALIA") return areaTotals[0] || { area: "-", value: 0 };
+    return { area: scope, value: scopeRegionRows.reduce((s, r) => s + r.totale, 0) };
+  }, [scope, regionRows, scopeRegionRows]);
+
+  const effectiveState = selectedState || mostCriticalState?.stato || null;
+
+  const selectedStateRow = useMemo(() => {
+    if (!effectiveState || !matrixRows.length) return null;
+    return (
+      matrixRows.find(
+        (r) =>
+          ((r[matrixStateKey] || "").trim() === effectiveState) ||
+          ((r[matrixStateKey] || "").trim().toLowerCase() === effectiveState.toLowerCase())
+      ) || null
+    );
+  }, [effectiveState, matrixRows, matrixStateKey]);
+
+  const selectedStateValues = useMemo(() => {
+    if (!selectedStateRow) return [];
+    return typologies
+      .map((t) => ({
+        tipologia: t,
+        value: toNumber(selectedStateRow[t] ?? selectedStateRow[t.replace(/_/g, "\\_")]),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [selectedStateRow, typologies]);
+
+  const stateDriver = selectedStateValues[0] || { tipologia: "-", value: 0 };
 
   const selectedRegionValues = useMemo(() => {
     if (!selected) return [];
@@ -313,10 +394,10 @@ export default function DashboardCollaudi() {
     const row = pipelineRows.find((r) => r.stato === effectiveState);
     if (!row) return { area: "-", value: 0 };
     const entries = [
-      ["Nord Ovest", row.no],
-      ["Nord Est", row.ne],
-      ["Centro", row.ce],
-      ["Sud", row.sud],
+      ["NORD OVEST", row.no],
+      ["NORD EST", row.ne],
+      ["CENTRO", row.ce],
+      ["SUD", row.sud],
     ].sort((a, b) => b[1] - a[1]);
     return { area: entries[0][0], value: entries[0][1] };
   }, [pipelineRows, effectiveState]);
@@ -324,19 +405,25 @@ export default function DashboardCollaudi() {
   const actionCenter = useMemo(() => {
     const actions = [];
     if (mostCriticalState) {
+      const totalBase = Math.max(scopeTotalResidui, 1);
       actions.push({
         icon: "⚠️",
-        title: "Bottleneck principale",
-        text: `${mostCriticalState.stato} con ${mostCriticalState.totale} residui (${mostCriticalState.pct.toFixed(1)}%)`,
+        title: scope === "ITALIA" ? "Bottleneck principale" : `Bottleneck principale (${scope})`,
+        text: `${mostCriticalState.stato} con ${mostCriticalState.scopedValue} residui (${((mostCriticalState.scopedValue / totalBase) * 100).toFixed(1)}%)`,
       });
     }
     if (mostCriticalRegion) {
       actions.push({
         icon: "🔥",
-        title: "Regione da attaccare subito",
+        title: scope === "ITALIA" ? "Regione da attaccare subito" : `Regione critica in ${scope}`,
         text: `${mostCriticalRegion.regione} con ${mostCriticalRegion.totale} residui`,
       });
     }
+    actions.push({
+      icon: "🗺️",
+      title: scope === "ITALIA" ? "Area più critica" : "Perimetro selezionato",
+      text: `${mostCriticalArea.area} con ${mostCriticalArea.value} residui`,
+    });
     if (selected) {
       actions.push({
         icon: "📍",
@@ -357,13 +444,13 @@ export default function DashboardCollaudi() {
             : `${effectiveState}: driver ${stateDriver.tipologia} (${stateDriver.value})`,
       });
       actions.push({
-        icon: "🗺️",
-        title: "Area prevalente nello stato",
+        icon: "🧱",
+        title: "Dove pesa lo stato",
         text: `${effectiveState}: concentrazione maggiore in ${dominantAreaInState.area} (${dominantAreaInState.value})`,
       });
     }
     return actions;
-  }, [mostCriticalState, mostCriticalRegion, selected, selectedRegionDriver, selectedStateRow, stateDriver, effectiveState, dominantAreaInState]);
+  }, [mostCriticalState, mostCriticalRegion, mostCriticalArea, selected, selectedRegionDriver, selectedStateRow, stateDriver, effectiveState, dominantAreaInState, scope, scopeTotalResidui]);
 
   if (loading) {
     return <div style={{ padding: 20 }}>Caricamento dati...</div>;
@@ -408,12 +495,30 @@ export default function DashboardCollaudi() {
           </div>
         </div>
 
+        <Card
+          title="Vista filtrabile"
+          right={<Badge bg="#ECFDF3" color="#027A48">Ambito: {scope}</Badge>}
+          style={{ marginBottom: 20 }}
+        >
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {SCOPE_OPTIONS.map((s) => (
+              <ScopeButton key={s} active={scope === s} onClick={() => setScope(s)}>
+                {s}
+              </ScopeButton>
+            ))}
+          </div>
+        </Card>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
-          <StatCard label="Totale residui" value={totalResidui} subtitle="Somma dei residui per stato" />
+          <StatCard
+            label={scope === "ITALIA" ? "Totale residui" : `Residui ${scope}`}
+            value={scopeTotalResidui}
+            subtitle={scope === "ITALIA" ? "Somma dei residui nazionali" : "Somma dei residui del territorio selezionato"}
+          />
           <StatCard
             label="Stato più critico"
             value={mostCriticalState?.stato || "-"}
-            subtitle={mostCriticalState ? `${mostCriticalState.totale} residui` : ""}
+            subtitle={mostCriticalState ? `${mostCriticalState.scopedValue} residui` : ""}
           />
           <StatCard
             label="Regione più critica"
@@ -421,9 +526,9 @@ export default function DashboardCollaudi() {
             subtitle={mostCriticalRegion ? `${mostCriticalRegion.totale} residui` : ""}
           />
           <StatCard
-            label="Valore max regione"
-            value={mostCriticalRegion?.totale || 0}
-            subtitle={mostCriticalRegion?.area || ""}
+            label={scope === "ITALIA" ? "Area più critica" : "Perimetro selezionato"}
+            value={mostCriticalArea?.area || "-"}
+            subtitle={mostCriticalArea ? `${mostCriticalArea.value} residui` : ""}
           />
         </div>
 
@@ -478,8 +583,11 @@ export default function DashboardCollaudi() {
                       <div style={{ fontWeight: 800 }}>{r.stato}</div>
                       <Badge>{r.totale}</Badge>
                     </div>
-                    <div style={{ marginTop: 8, color: "#6B7280", fontSize: 13 }}>
-                      {r.pct.toFixed(1)}% del totale • NO {r.no} • NE {r.ne} • CE {r.ce} • SUD {r.sud}
+                    <div style={{ marginTop: 8, color: "#9CA3AF", fontSize: 12 }}>
+                      {r.pct.toFixed(1)}% del totale
+                    </div>
+                    <div style={{ marginTop: 4, color: "#D1D5DB", fontSize: 11 }}>
+                      NO {r.no} • NE {r.ne} • CE {r.ce} • SUD {r.sud}
                     </div>
                     <ProgressBar value={r.totale} max={totalResidui} color={active ? "#111827" : "#2563EB"} />
                   </div>
@@ -520,10 +628,10 @@ export default function DashboardCollaudi() {
                   const row = pipelineRows.find((r) => r.stato === effectiveState);
                   if (!row) return <EmptyInfo text="Nessun dato area disponibile." />;
                   const areaBreakdown = [
-                    { area: "Nord Ovest", value: row.no },
-                    { area: "Nord Est", value: row.ne },
-                    { area: "Centro", value: row.ce },
-                    { area: "Sud", value: row.sud },
+                    { area: "NORD OVEST", value: row.no },
+                    { area: "NORD EST", value: row.ne },
+                    { area: "CENTRO", value: row.ce },
+                    { area: "SUD", value: row.sud },
                   ].sort((a, b) => b.value - a.value);
                   return (
                     <div style={{ display: "grid", gap: 8 }}>
