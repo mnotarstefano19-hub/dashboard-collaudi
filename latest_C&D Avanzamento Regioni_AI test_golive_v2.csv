@@ -1,0 +1,59 @@
+﻿🔄 PIPELINE STATI - FLUSSO CRONOLOGICO;;;;;;;;;;;
+#;STATO AVANZAMENTO;ITALIA;% TOT;NO;NE;CE;SUD;;;;
+1;In progettazione;347;15,0%;126;84;51;86;;;;
+2;Da aprire;111;4,8%;46;42;17;6;;;;
+3;In construction, attesa CUIR;450;19,4%;263;76;85;26;;;;
+4;cuir senza ripristini;0;0,0%;0;0;0;0;;;;
+5;Cuir NO Asb;689;29,7%;463;122;58;46;;;;
+6;ASB inviati in analisi INF;166;7,2%;73;41;36;16;;;;
+7;Rifiuto in carico a OF;226;9,7%;145;27;37;17;;;;
+8;Da collaudare INF;173;7,5%;117;28;16;12;;;;
+9;Prescrizione in carico a OF;115;5,0%;92;10;12;1;;;;
+10;Prescrizioni in carico INF;42;1,8%;17;6;14;5;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+📊 MATRICE RESIDUI: STATO AVANZAMENTO x TIPOLOGIA;;;;;;;;;;;
+STATO \ TIPOLOGIA;FTTH;PCN;PRI;FIBRA_INT;FIBRA_REG;CAB_INT;SRB;FTTH_R;FWA_INT;TOTALE;
+In progettazione;1;7;0;300;1;2;0;6;30;347;
+Da aprire;3;5;8;90;0;2;0;3;0;111;
+In construction, attesa CUIR;64;71;137;151;0;3;1;23;0;450;
+cuir senza ripristini;0;0;0;0;0;0;0;0;0;0;
+Cuir NO Asb;267;75;127;50;7;16;139;8;0;689;
+ASB inviati in analisi INF;21;14;11;44;4;10;34;1;27;166;
+Rifiuto in carico a OF;106;26;29;5;5;3;44;8;0;226;
+Da collaudare INF;64;20;45;14;0;6;24;0;0;173;
+Prescrizione in carico a OF;86;10;15;0;0;2;0;2;0;115;
+Prescrizioni in carico INF;29;4;6;0;0;0;2;1;0;42;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+;;;;;;;;;;;
+📍 DETTAGLIO REGIONI x TIPOLOGIA;;;;;;;;;;;
+;;;;;;;;;;;
+AREA;REGIONE;FTTH;PCN;PRI;FIBRA_INT;FIBRA_REG;CAB_INT;SRB;FTTH_R;FWA_INT;TOTALE
+NORD OVEST;Liguria;44;21;15;22;0;1;18;1;9;131
+NORD OVEST;Lombardia;264;77;204;163;9;28;62;4;17;828
+NORD OVEST;Piemonte;120;22;76;65;0;2;56;2;14;357
+NORD OVEST;Valle d'Aosta;8;4;0;8;0;0;4;1;1;26
+NORD EST;Emilia-Romagna;53;37;32;33;1;1;32;3;3;195
+NORD EST;Friuli-Venezia Giulia;0;0;1;7;1;0;3;3;0;15
+NORD EST;Trentino-Alto Adige;3;1;1;31;0;0;3;1;2;42
+NORD EST;Veneto;50;20;20;74;0;1;18;0;1;184
+CENTRO;Abruzzo;6;3;1;8;0;0;4;0;0;22
+CENTRO;Lazio;30;18;14;37;1;7;15;14;1;137
+CENTRO;Marche;14;11;2;0;3;3;6;1;1;41
+CENTRO;Molise;0;0;0;6;0;0;0;0;0;6
+CENTRO;Sardegna;0;0;0;1;0;0;0;0;0;1
+CENTRO;Toscana;19;13;5;54;0;0;10;9;5;115
+CENTRO;Umbria;2;1;0;1;0;0;0;0;0;4
+SUD;Basilicata;5;1;2;20;1;1;3;3;0;36
+SUD;Calabria;5;0;0;9;0;0;0;0;0;14
+SUD;Campania;16;3;5;60;1;0;10;8;2;105
+SUD;Puglia;2;0;0;16;0;0;0;2;1;21
+SUD;Sicilia;0;0;0;39;0;0;0;0;0;39
