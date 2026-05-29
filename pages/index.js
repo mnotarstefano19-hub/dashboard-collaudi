@@ -215,6 +215,10 @@ export default function DashboardCollaudi() {
     setSelectedRegion(null);
   }, [areaFilter]);
 
+  useEffect(() => {
+    setSelectedState(null);
+  }, [scope]);
+
   const parsed = useMemo(() => {
     if (!rawLines.length) return null;
 
@@ -293,6 +297,7 @@ export default function DashboardCollaudi() {
 
   const selected = filteredRegions.find((r) => r.regione === selectedRegion) || null;
 
+  // ===== FILTRO TERRITORIALE SOLO SEZIONE ALTA =====
   const scopeStateRows = useMemo(() => {
     return pipelineRows
       .map((r) => {
@@ -354,7 +359,8 @@ export default function DashboardCollaudi() {
     return { area: scope, value: scopeRegionRows.reduce((s, r) => s + r.totale, 0) };
   }, [scope, regionRows, scopeRegionRows]);
 
-  const effectiveState = selectedState || mostCriticalState?.stato || null;
+  // ===== DETTAGLIO STATO =====
+  const effectiveState = selectedState || mostCriticalState?.stato || pipelineRows[0]?.stato || null;
 
   const selectedStateRow = useMemo(() => {
     if (!effectiveState || !matrixRows.length) return null;
@@ -379,6 +385,7 @@ export default function DashboardCollaudi() {
 
   const stateDriver = selectedStateValues[0] || { tipologia: "-", value: 0 };
 
+  // ===== DETTAGLIO REGIONE =====
   const selectedRegionValues = useMemo(() => {
     if (!selected) return [];
     return Object.entries(selected.row)
@@ -450,7 +457,19 @@ export default function DashboardCollaudi() {
       });
     }
     return actions;
-  }, [mostCriticalState, mostCriticalRegion, mostCriticalArea, selected, selectedRegionDriver, selectedStateRow, stateDriver, effectiveState, dominantAreaInState, scope, scopeTotalResidui]);
+  }, [
+    mostCriticalState,
+    mostCriticalRegion,
+    mostCriticalArea,
+    selected,
+    selectedRegionDriver,
+    selectedStateRow,
+    stateDriver,
+    effectiveState,
+    dominantAreaInState,
+    scope,
+    scopeTotalResidui,
+  ]);
 
   if (loading) {
     return <div style={{ padding: 20 }}>Caricamento dati...</div>;
@@ -495,6 +514,7 @@ export default function DashboardCollaudi() {
           </div>
         </div>
 
+        {/* VISTA FILTRABILE ALTA */}
         <Card
           title="Vista filtrabile"
           right={<Badge bg="#ECFDF3" color="#027A48">Ambito: {scope}</Badge>}
@@ -518,7 +538,11 @@ export default function DashboardCollaudi() {
           <StatCard
             label="Stato più critico"
             value={mostCriticalState?.stato || "-"}
-            subtitle={mostCriticalState ? `${mostCriticalState.scopedValue} residui` : ""}
+            subtitle={
+              mostCriticalState?.scopedValue !== undefined
+                ? `${mostCriticalState.scopedValue} residui`
+                : ""
+            }
           />
           <StatCard
             label="Regione più critica"
@@ -553,6 +577,7 @@ export default function DashboardCollaudi() {
           </div>
         </Card>
 
+        {/* SEZIONE BASSA INVARIATA NELLA LOGICA */}
         <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
           <TabButton active={tab === "pipeline"} onClick={() => setTab("pipeline")}>
             Pipeline Stati
