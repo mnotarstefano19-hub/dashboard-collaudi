@@ -95,6 +95,44 @@ export default function Dashboard() {
     <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
       <div><b>Totale residui:</b> {regioni.reduce((s, r) => s + r.totale, 0)}</div>
       <div>
+
+      {/* Action Center */}
+    <div style={{ marginBottom: 20 }}>
+      <h3>🎯 Action Center</h3>
+
+      <div style={{ marginBottom: 6 }}>
+        ⚠️ Bottleneck principale:{" "}
+        <b>
+          {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.regione}
+        </b>
+      </div>
+
+      <div style={{ marginBottom: 6 }}>
+        🔥 Regione da attaccare subito →
+        <b>
+          {" "}
+          {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.regione}
+        </b>{" "}
+        con{" "}
+        <b>
+          {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.totale}
+        </b>{" "}
+        residui
+      </div>
+
+      {selected && (
+        <div style={{ marginBottom: 6 }}>
+          📍 Regione selezionata: <b>{selected.regione}</b> — driver:{" "}
+          <b>
+            {
+              Object.entries(selected.row)
+                .filter(([k]) => !["AREA", "REGIONE", "TOTALE"].includes(k))
+                .sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0]
+            }
+          </b>
+        </div>
+      )}
+    </div>
         <b>Regione più critica:</b>{" "}
         {regioni.slice().sort((a, b) => b.totale - a.totale)[0]?.regione}
       </div>
