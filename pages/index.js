@@ -87,8 +87,16 @@ export default function Dashboard() {
 
   const selected = regioni.find((r) => r.regione === selectedRegion);
 
-  return (
-    <div style={{ padding: 20 }}>
+ return (
+  <div style={{ padding: 20 }}>
+    <h1>Dashboard Collaudi</h1>
+
+    {/* KPI */}
+    <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
+      <div><b>Totale residui:</b> {regioni.reduce((s, r) => s + r.totale, 0)}</div>
+      <div>
+        <b>Regione più critica:</b>{" "}
+        {regioni.sort((a, b) => b.totale - a.totale)[0]?.reg
       <h1>Dashboard Collaudi</h1>
 
       <Card title="Regioni">
