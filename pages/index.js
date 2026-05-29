@@ -225,7 +225,7 @@ export default function DashboardCollaudi() {
       .map((r) => ({
         stato: r["STATO AVANZAMENTO"],
         totale: toNumber(r["ITALIA"]),
-        pct: toNumber(r["% TOT"]),
+        pct: toNumber((r["% TOT"] || "").replace("%", "")),
         no: toNumber(r["NO"]),
         ne: toNumber(r["NE"]),
         ce: toNumber(r["CE"]),
